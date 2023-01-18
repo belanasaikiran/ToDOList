@@ -7,6 +7,8 @@ const date = require(__dirname + "/date.js");
 const app = express();
 const mongoose = require("mongoose");
 
+const _ = require('lodash')
+
 app.set("view engine", "ejs");
 
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -38,6 +40,13 @@ const item3 = new Item({
 
 const defaultItems = [item1, item2, item3];
 
+const ListSchema = {
+  name: String,
+  items: [itemsSchema],
+};
+
+const List = mongoose.model("List", ListSchema);
+
 app.get("/", function (req, res) {
   Item.find({}, function (err, foundItems) {
     if (foundItems.length === 0) {
@@ -48,27 +57,92 @@ app.get("/", function (req, res) {
           console.log("Success");
         }
       });
-      res.redirect("/")
-    } else{
+      res.redirect("/");
+    } else {
       res.render("list", { listTitle: "Today", newListItems: foundItems });
     }
   });
 });
 
-app.post("/", function (req, res) {
-  const item = req.body.newItem;
+// Route Parameters
+app.get("/:customListName", (req, res) => {
+  // console.log(req.params.customListName)
+  const customListName = _.capitalize(req.params.customListName);
 
-  if (req.body.list === "Work") {
-    workItems.push(item);
-    res.redirect("/work");
-  } else {
-    items.push(item);
-    res.redirect("/");
-  }
+  List.findOne({ name: customListName }, function (err, foundList) {
+    if (!err) {
+      if (!foundList) {
+        // create new list
+        const list = new List({
+          name: customListName,
+          items: defaultItems,
+        });
+
+        list.save();
+        res.redirect("/"+ customListName)
+
+      } else {
+        // show an existing list
+        res.render("list", {listTitle: foundList.name, newListItems: foundList.items} )   
+           console.log(foundList.items)  
+      }
+    } else {
+      console.log(err);
+    }
+
+  });
 });
 
-app.get("/work", function (req, res) {
-  res.render("list", { listTitle: "Work List", newListItems: workItems });
+app.post("/", function (req, res) {
+  const itemName = req.body.newItem;
+  const listName = req.body.list
+  console.log(listName)
+
+  const item = new Item({
+    name: itemName,
+  });
+
+  if(listName === "Today"){
+    item.save()
+    res.redirect("/")
+  } else{
+    List.findOne({name: listName}, function(err, foundList){
+      foundList.items.push(item);
+      foundList.save()
+      res.redirect("/" + listName)
+    })
+  }
+
+
+});
+
+// delete post
+app.post("/delete", (req, res) => {
+  // console.log(req.body.checkbox)
+  const id = req.body.checkbox;
+  const listName = req.body.listName
+
+
+  if(listName === "Today"){
+    Item.findOneAndRemove(id, function (err) {
+      if (err) {
+        res.send(err);
+      } else {
+        res.redirect("/");
+      }
+    });
+  } else{
+    List.findOneAndUpdate({
+      name: listName
+    }, {$pull: {items: {_id: id}}},  function(err, foundList){
+      if(!err){
+        res.redirect("/" + listName)
+      }
+    })
+  }
+
+
+
 });
 
 app.get("/about", function (req, res) {
